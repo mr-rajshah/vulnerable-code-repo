@@ -1,0 +1,41 @@
+name: Security Scan
+
+on: 
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  security_scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Bandit (for Python)
+        run: |
+          pip install bandit
+          bandit -r . -f json -o bandit-report.json || true
+
+      - name: Install gosec (for Go)
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt=json -out=gosec-report.json ./... || true
+
+      - name: Analyze results & determine action
+        run: |
+          if [ -f bandit-report.json ]; then
+            CRITICAL_ISSUES=$(jq '.results[] | select(.issue_severity == "HIGH")' bandit-report.json | wc -l)
+          elif [ -f gosec-report.json ]; then
+            CRITICAL_ISSUES=$(jq '.Issues[] | select(.severity == "HIGH")' gosec-report.json | wc -l)
+          else
+            CRITICAL_ISSUES=0
+          fi
+
+          if [ "$CRITICAL_ISSUES" -gt 0 ]; then
+            echo "Block"
+            exit 1
+          else
+            echo "Successful"
+          fi
