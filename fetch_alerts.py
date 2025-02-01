@@ -1,7 +1,7 @@
 import requests
 
 GITHUB_REPO = "mr-rajshah/vulnerable-code-repo"
-GITHUB_TOKEN = "YOUR_PERSONAL_ACCESS_TOKEN"
+GITHUB_TOKEN = "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"
 
 HEADERS = {
     "Accept": "application/vnd.github+json",
