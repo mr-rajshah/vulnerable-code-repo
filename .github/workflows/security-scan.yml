@@ -8,6 +8,9 @@ on:
 jobs:
   security_scan:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write  # Allows commenting on PRs
+      contents: write       # Allows merging PRs
 
     steps:
       - name: Checkout code
@@ -25,17 +28,30 @@ jobs:
 
       - name: Analyze results & determine action
         run: |
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          REPO="$GITHUB_REPOSITORY"
+
+          # Initialize counts
+          CRITICAL_ISSUES=0
+
           if [ -f bandit-report.json ]; then
-            CRITICAL_ISSUES=$(jq '.results[] | select(.issue_severity == "HIGH")' bandit-report.json | wc -l)
-          elif [ -f gosec-report.json ]; then
-            CRITICAL_ISSUES=$(jq '.Issues[] | select(.severity == "HIGH")' gosec-report.json | wc -l)
-          else
-            CRITICAL_ISSUES=0
+            CRITICAL_ISSUES=$(jq '.results[] | select(.issue_severity == "CRITICAL")' bandit-report.json | wc -l)
           fi
+
+          if [ -f gosec-report.json ]; then
+            CRITICAL_ISSUES=$((CRITICAL_ISSUES + $(jq '.Issues[] | select(.severity == "CRITICAL")' gosec-report.json | wc -l)))
+          fi
+
+          echo "Critical Issues: $CRITICAL_ISSUES"
 
           if [ "$CRITICAL_ISSUES" -gt 0 ]; then
             echo "Block"
-            exit 1
+            gh pr comment "$PR_NUMBER" -R "$REPO" -b "Block: Critical vulnerabilities found in code."
+            exit 1  # Fails the workflow, blocking PR merge
           else
             echo "Successful"
+            gh pr comment "$PR_NUMBER" -R "$REPO" -b "Successful: No critical vulnerabilities found. Auto-merging..."
+            gh pr merge "$PR_NUMBER" --auto --squash -R "$REPO"
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
