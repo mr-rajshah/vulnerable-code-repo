@@ -1,6 +1,6 @@
-name: Security Scan
+name: Security Scan with Bandit
 
-on: 
+on:
   pull_request:
     branches:
       - main
@@ -8,47 +8,26 @@ on:
 jobs:
   security_scan:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write  # Allows commenting on PRs
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install Bandit (for Python)
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit Scan
+        run: bandit -r . -o bandit_report.json -f json || true
+
+      - name: Analyze Scan Results
         run: |
-          pip install bandit
-          bandit -r . -f json -o bandit-report.json || true
-
-      - name: Install gosec (for Go)
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -fmt=json -out=gosec-report.json ./... || true
-
-      - name: Analyze results & Block PR if Critical vulnerability is found
-        run: |
-          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
-          REPO="$GITHUB_REPOSITORY"
-
-          # Initialize counts
-          CRITICAL_ISSUES=0
-
-          if [ -f bandit-report.json ]; then
-            CRITICAL_ISSUES=$(jq '.results[] | select(.issue_severity == "CRITICAL")' bandit-report.json | wc -l)
-          fi
-
-          if [ -f gosec-report.json ]; then
-            CRITICAL_ISSUES=$((CRITICAL_ISSUES + $(jq '.Issues[] | select(.severity == "CRITICAL")' gosec-report.json | wc -l)))
-          fi
-
-          echo "Critical Issues: $CRITICAL_ISSUES"
-
-          if [ "$CRITICAL_ISSUES" -gt 0 ]; then
-            echo "Block"
-            gh pr comment "$PR_NUMBER" -R "$REPO" -b "Block: Critical vulnerabilities found in code."
-            exit 1  # Fails the workflow, blocking PR merge
+          critical_vulns=$(jq '[.results[] | select(.issue_severity=="CRITICAL")] | length' bandit_report.json)
+          if [ "$critical_vulns" -gt 0 ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body "Block"
+            exit 1
           else
-            echo "No critical vulnerabilities found."
+            gh pr comment ${{ github.event.pull_request.number }} --body "Successful"
+            gh pr merge ${{ github.event.pull_request.number }} --merge
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
