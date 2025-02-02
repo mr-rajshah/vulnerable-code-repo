@@ -2,53 +2,49 @@ import requests
 
 GITHUB_REPO = "mr-rajshah/vulnerable-code-repo"
 GITHUB_TOKEN = "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"
+import requests
+import json
 
-HEADERS = {
-    "Accept": "application/vnd.github+json",
-    "Authorization": f"token {GITHUB_TOKEN}"
+# Replace with your repository details
+GITHUB_OWNER = "mr-rajshah"
+REPO_NAME = "vulnerable-code-repo"
+GITHUB_TOKEN = "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"
+
+headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
 }
 
+# Fetch Code Scanning Alerts
 def get_code_scanning_alerts():
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/code-scanning/alerts"
-    response = requests.get(url, headers=HEADERS)
-
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{REPO_NAME}/code-scanning/alerts"
+    response = requests.get(url, headers=headers)
     if response.status_code == 200:
-        alerts = response.json()
-        high_risk_alerts = []
-
-        for alert in alerts:
-            if alert.get("rule") and alert["rule"].get("severity") in ["high", "critical"]:
-                cwe_id = alert["rule"].get("id", "Unknown")
-                likelihood = get_cwe_likelihood(cwe_id)
-
-                if likelihood == "High":
-                    high_risk_alerts.append({
-                        "CWE_ID": cwe_id,
-                        "Severity": alert["rule"]["severity"],
-                        "Likelihood of Exploitability": likelihood
-                    })
-
-        return high_risk_alerts
+        return response.json()
     else:
-        print(f"Failed to fetch alerts: {response.status_code}")
+        print("Failed to fetch alerts:", response.json())
         return []
 
-def get_cwe_likelihood(cwe_id):
-    """ Fetch likelihood from CWE database """
-    cwe_likelihood_mapping = {
-        "CWE-78": "High",   # Command Injection
-        "CWE-79": "High",   # XSS
-        "CWE-89": "High",   # SQL Injection
-        "CWE-287": "Medium" # Improper Authentication
-    }
+# Fetch Likelihood of Exploitability from CWE
+def get_cwe_exploitability(cwe_id):
+    url = f"https://cwe.mitre.org/data/definitions/{cwe_id}.html"
+    response = requests.get(url)
+    if "Likelihood of Exploitability: High" in response.text:
+        return "High"
+    return "Low/Medium"
 
-    return cwe_likelihood_mapping.get(cwe_id, "Unknown")
+# Main Execution
+alerts = get_code_scanning_alerts()
 
-if __name__ == "__main__":
-    results = get_code_scanning_alerts()
-    if results:
-        print("High-risk vulnerabilities found:")
-        for item in results:
-            print(item)
-    else:
-        print("No high-risk vulnerabilities found.")
+print("Vulnerabilities with High Severity & High Exploitability:")
+for alert in alerts:
+    severity = alert.get("rule", {}).get("security_severity_level", "UNKNOWN")
+    cwe_id = alert.get("rule", {}).get("cwe_ids", [None])[0]
+
+    if severity in ["high", "critical"] and cwe_id:
+        likelihood = get_cwe_exploitability(cwe_id)
+        if likelihood == "High":
+            print(f"Vulnerability: {alert['rule']['description']}")
+            print(f"Severity: {severity}, CWE: {cwe_id}, Exploitability: {likelihood}")
+            print("-" * 50)
+
