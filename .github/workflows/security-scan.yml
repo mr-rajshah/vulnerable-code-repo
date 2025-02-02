@@ -17,17 +17,20 @@ jobs:
         run: pip install bandit
 
       - name: Run Bandit Scan
-        run: bandit -r . -o bandit_report.json -f json || true
+        run: |
+          bandit -r . -f json -o bandit_report.json || true
 
       - name: Analyze Scan Results
+        id: scan_results
         run: |
           critical_vulns=$(jq '[.results[] | select(.issue_severity=="CRITICAL")] | length' bandit_report.json)
-          if [ "$critical_vulns" -gt 0 ]; then
-            gh pr comment ${{ github.event.pull_request.number }} --body "Block"
-            exit 1
-          else
-            gh pr comment ${{ github.event.pull_request.number }} --body "Successful"
-            gh pr merge ${{ github.event.pull_request.number }} --merge
-          fi
+          echo "critical_vulns=$critical_vulns" >> $GITHUB_ENV
+
+      - name: Block PR if Critical Vulnerabilities Found
+        if: env.critical_vulns > 0
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          gh pr comment $PR_NUMBER --body "Block"
+          exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
