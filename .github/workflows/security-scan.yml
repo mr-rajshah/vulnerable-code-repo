@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write  # Allows commenting on PRs
-      contents: write       # Allows merging PRs
 
     steps:
       - name: Checkout code
@@ -26,7 +25,7 @@ jobs:
           go install github.com/securego/gosec/v2/cmd/gosec@latest
           gosec -fmt=json -out=gosec-report.json ./... || true
 
-      - name: Analyze results & determine action
+      - name: Analyze results & Block PR if Critical vulnerability is found
         run: |
           PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
           REPO="$GITHUB_REPOSITORY"
@@ -49,9 +48,7 @@ jobs:
             gh pr comment "$PR_NUMBER" -R "$REPO" -b "Block: Critical vulnerabilities found in code."
             exit 1  # Fails the workflow, blocking PR merge
           else
-            echo "Successful"
-            gh pr comment "$PR_NUMBER" -R "$REPO" -b "Successful: No critical vulnerabilities found. Auto-merging..."
-            gh pr merge "$PR_NUMBER" --auto --squash -R "$REPO"
+            echo "No critical vulnerabilities found."
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
